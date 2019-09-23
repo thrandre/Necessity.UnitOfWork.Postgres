@@ -1,4 +1,4 @@
-namespace Necessity.UnitOfWork.Postgres
+namespace Necessity.UnitOfWork.Postgres.Schema
 {
     public interface ISchema
     {
