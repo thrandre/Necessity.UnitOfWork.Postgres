@@ -1,16 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Data.Predicates;
 using Necessity.UnitOfWork.Postgres.Schema;
 
 namespace Necessity.UnitOfWork.Postgres
 {
-    public enum OnConflict
-    {
-        DoNothing,
-        Update
-    }
-
     public class DefaultQueryBuilder<TEntity, TKey> : IQueryBuilder<TEntity, TKey>
     {
         public DefaultQueryBuilder(ISchema schema)
@@ -20,7 +15,7 @@ namespace Necessity.UnitOfWork.Postgres
 
         public ISchema Schema { get; }
 
-        public virtual string Find(TKey key, Dictionary<string, object> queryParams)
+        public virtual string Get(TKey key, Dictionary<string, object> queryParams)
         {
             var mapping = ReverseMap(Schema.Columns.Mapping);
 
@@ -28,10 +23,27 @@ namespace Necessity.UnitOfWork.Postgres
 
             return FormatSqlStatement(
                 $@"
-            	SELECT { GetColumnList(mapping) }
-            	FROM { Schema.TableName }
-            	WHERE { GetDefaultFilterExpression(mapping) }
-        	");
+                    SELECT { GetColumnList(mapping) }
+                    FROM { Schema.TableName }
+                    WHERE { GetDefaultFilterExpression(mapping) }
+                ");
+        }
+
+        public string Find(Predicate predicate, Dictionary<string, object> queryParams)
+        {
+            var mapping = ReverseMap(Schema.Columns.Mapping);
+
+            var sqlWhere = predicate?
+                .Accept(new PostgresPredicateVisitor(p => Schema.Columns.Mapping[p], queryParams));
+
+            return FormatSqlStatement(
+                $@"
+                    SELECT { GetColumnList(mapping) }
+                    FROM { Schema.TableName }
+                    {(predicate != null
+                        ? $"WHERE { sqlWhere }"
+                        : "")}
+                ");
         }
 
         public virtual string GetAll(Dictionary<string, object> queryParams)
@@ -40,16 +52,16 @@ namespace Necessity.UnitOfWork.Postgres
 
             return FormatSqlStatement(
                 $@"
-            	SELECT { GetColumnList(mapping) }
-            	FROM { Schema.TableName }
-        	");
+                    SELECT { GetColumnList(mapping) }
+                    FROM { Schema.TableName }
+                ");
         }
 
         public virtual string Create(TEntity entity, Dictionary<string, object> queryParams)
         {
             var mapping = ReverseMap(Schema.Columns.Mapping);
 
-            ExtractQueryParams(queryParams, entity);
+            ExtractValues(entity, queryParams);
 
             return GetInsertStatement(mapping);
         }
@@ -58,16 +70,16 @@ namespace Necessity.UnitOfWork.Postgres
         {
             var mapping = ReverseMap(Schema.Columns.Mapping);
 
-            ExtractQueryParams(queryParams, entity);
+            ExtractValues(entity, queryParams);
 
             return GetUpdateStatement(mapping);
         }
 
-        public virtual string Upsert(TEntity entity, Dictionary<string, object> queryParams, OnConflict onConflict)
+        public virtual string Upsert(TEntity entity, OnConflict onConflict, Dictionary<string, object> queryParams)
         {
             var mapping = ReverseMap(Schema.Columns.Mapping);
 
-            ExtractQueryParams(queryParams, entity);
+            ExtractValues(entity, queryParams);
 
             return GetUpsertStatement(mapping, onConflict);
         }
@@ -133,9 +145,9 @@ namespace Necessity.UnitOfWork.Postgres
         {
             return FormatSqlStatement(
                 $@"
-                INSERT INTO { Schema.TableName }
-                { GetColumnValueList(columnPropertyExpressionMapping, insert: true) }
-            ");
+                    INSERT INTO { Schema.TableName }
+                    { GetColumnValueList(columnPropertyExpressionMapping, insert: true) }
+                ");
         }
 
         protected virtual string GetUpdateStatement(Dictionary<string, string> columnPropertyExpressionMapping)
@@ -144,11 +156,11 @@ namespace Necessity.UnitOfWork.Postgres
 
             return FormatSqlStatement(
                 $@"
-                UPDATE { Schema.TableName }
-                SET
-                { GetColumnValueList(updateColumns, insert: false) }
-				WHERE { Schema.Columns.KeyName } = { columnPropertyExpressionMapping[Schema.Columns.KeyName] }
-            ");
+                    UPDATE { Schema.TableName }
+                    SET
+                    { GetColumnValueList(updateColumns, insert: false) }
+                    WHERE { Schema.Columns.KeyName } = { columnPropertyExpressionMapping[Schema.Columns.KeyName] }
+                ");
         }
 
         protected virtual string GetUpsertStatement(Dictionary<string, string> columnPropertyExpressionMapping, OnConflict onConflict)
@@ -189,10 +201,10 @@ namespace Necessity.UnitOfWork.Postgres
         {
             return FormatSqlStatement(
                 $@"
-                DELETE
-                FROM { Schema.TableName }
-                WHERE { GetDefaultFilterExpression(columnPropertyExpressionMapping) }
-            ");
+                    DELETE
+                    FROM { Schema.TableName }
+                    WHERE { GetDefaultFilterExpression(columnPropertyExpressionMapping) }
+                ");
         }
 
         protected virtual string GetDefaultFilterExpression(Dictionary<string, string> columnPropertyExpressionMapping)
@@ -208,12 +220,12 @@ namespace Necessity.UnitOfWork.Postgres
                 " ");
         }
 
-        protected virtual void ExtractQueryParams(Dictionary<string, object> queryParams, TEntity entity)
+        protected virtual void ExtractValues<TObject>(TObject @object, Dictionary<string, object> queryParams)
         {
-            typeof(TEntity)
+            typeof(TObject)
                 .GetProperties()
                 .ToList()
-                .ForEach(p => queryParams.Add(p.Name, p.GetValue(entity)));
+                .ForEach(p => queryParams.Add(p.Name, p.GetValue(@object)));
         }
     }
 }
