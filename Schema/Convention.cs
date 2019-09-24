@@ -1,15 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Necessity.UnitOfWork.Schema;
 
 namespace Necessity.UnitOfWork.Postgres.Schema
 {
-    public class ByConvention
+    public class Convention
     {
-        public static ISchema CreateSchema<TEntity>(Action<ByConventionSchema> configure = null)
+        public static ISchema GetPostgresSchema<TEntity>(Action<ConventionOptions> configure = null, Action<ByConventionSchema> postConfigure = null)
         {
+            var options = new ConventionOptions();
+
+            configure?.Invoke(options);
+
             var entityType = typeof(TEntity);
-            var tableName = GetTableName(entityType);
+            var tableName = GetTableName(entityType, options.PluralizeTableNames);
             var properties = GetPropertyColumnMapping(entityType);
             var primaryKey = GetPrimaryKey(properties.Values.Select(v => v.columnName));
 
@@ -17,26 +22,41 @@ namespace Necessity.UnitOfWork.Postgres.Schema
                 tableName,
                 new ByConventionSchemaColumns(primaryKey, properties));
 
-            configure?.Invoke(schema);
+            postConfigure?.Invoke(schema);
 
             return schema;
         }
 
         private static string[] PrimaryKeyCandidates => new[] { "id", "key" };
 
-        private static string GetTableName(Type entityType)
+        private static string GetTableName(Type entityType, bool pluralizeTableNames)
         {
-            return entityType
+            var tableName = entityType
                 .Name
-                .TrimEnd("entity", StringComparison.InvariantCultureIgnoreCase)
+                .TrimEnd("entity", StringComparison.OrdinalIgnoreCase)
                 .ToSnakeCase();
+
+            return pluralizeTableNames
+                ? tableName + "s"
+                : tableName;
+        }
+
+        private static string GuessColumnDbType(Type propertyType)
+        {
+            return TypeHelpers
+                .IsJsonNetType(propertyType)
+                    ? "jsonb"
+                    : null;
         }
 
         private static Dictionary<string, (string columnName, string dbType)> GetPropertyColumnMapping(Type entityType)
         {
             return entityType
                 .GetProperties()
-                .ToDictionary(x => x.Name, x => (x.Name.ToSnakeCase(), (string)null));
+                .ToDictionary(
+                    x => x.Name,
+                    x => (x.Name.ToSnakeCase(), GuessColumnDbType(x.PropertyType)),
+                    StringComparer.OrdinalIgnoreCase);
         }
 
         private static string GetPrimaryKey(IEnumerable<string> columnNames)

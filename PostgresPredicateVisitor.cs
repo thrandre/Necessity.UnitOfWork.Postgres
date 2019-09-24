@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Necessity.UnitOfWork.Predicates;
 
-namespace Data.Predicates
+namespace Necessity.UnitOfWork.Postgres
 {
     public class PostgresPredicateVisitor : IPredicateVisitor<string>
     {
@@ -42,7 +43,6 @@ namespace Data.Predicates
             if (predicate is PredicateGroup group)
             {
                 var expr = string.Join(Pad(GetOperator(group.Op, false)), group.Children.Select(c => VisitPredicate(c)));
-
                 return group.Op == Operator.Or
                     ? Pad(expr, "(", ")")
                     : expr;
@@ -61,7 +61,7 @@ namespace Data.Predicates
             var rightOperand = GetRightOperand(dynamicParameter, propertyValue);
             var leftOperand = GetLeftOperand(binaryPredicate.Op, propertyName, propertyValue);
 
-            var @operator = GetOperator(binaryPredicate.Op, binaryPredicate.Negate, IsJson(propertyValue.GetType().FullName));
+            var @operator = GetOperator(binaryPredicate.Op, binaryPredicate.Negate, TypeHelpers.IsJsonNetType(propertyValue.GetType()));
 
             return leftOperand
                 + Pad(@operator)
@@ -76,11 +76,6 @@ namespace Data.Predicates
 
             return "@" + dynamicParameterName;
         }
-
-        private bool IsJson(string typeFullName) =>
-            typeFullName == "Newtonsoft.Json.Linq.JToken"
-                || typeFullName == "Newtonsoft.Json.Linq.JObject"
-                || typeFullName == "Newtonsoft.Json.Linq.JArray";
 
         private string CastToMatchValue(string columnOrPropertyName, object value, string[] validCasts = null)
         {
@@ -99,7 +94,7 @@ namespace Data.Predicates
                     case bool b:
                         return "boolean";
 
-                    case object o when IsJson(o.GetType().FullName):
+                    case object o when TypeHelpers.IsJsonNetType(o.GetType()):
                         return "jsonb";
 
                     default:

@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Data.Predicates;
-using Necessity.UnitOfWork.Postgres.Schema;
+using Necessity.UnitOfWork.Predicates;
+using Necessity.UnitOfWork.Schema;
 
 namespace Necessity.UnitOfWork.Postgres
 {
@@ -19,14 +19,15 @@ namespace Necessity.UnitOfWork.Postgres
         {
             var mapping = ReverseMap(Schema.Columns.Mapping);
 
-            queryParams.Add(Schema.Columns.KeyName, key);
+            return Find(
+                Predicate.Create(x =>
+                    x.Binary(Operator.Eq, mapping[Schema.Columns.KeyName], key)),
+                queryParams);
+        }
 
-            return FormatSqlStatement(
-                $@"
-                    SELECT { GetColumnList(mapping) }
-                    FROM { Schema.TableName }
-                    WHERE { GetDefaultFilterExpression(mapping) }
-                ");
+        public virtual string GetAll(Dictionary<string, object> queryParams)
+        {
+            return Find(null, queryParams);
         }
 
         public string Find(Predicate predicate, Dictionary<string, object> queryParams)
@@ -43,17 +44,6 @@ namespace Necessity.UnitOfWork.Postgres
                     {(predicate != null
                         ? $"WHERE { sqlWhere }"
                         : "")}
-                ");
-        }
-
-        public virtual string GetAll(Dictionary<string, object> queryParams)
-        {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
-
-            return FormatSqlStatement(
-                $@"
-                    SELECT { GetColumnList(mapping) }
-                    FROM { Schema.TableName }
                 ");
         }
 
@@ -214,10 +204,12 @@ namespace Necessity.UnitOfWork.Postgres
 
         protected virtual string FormatSqlStatement(string rawStatement)
         {
-            return Regex.Replace(
-                Regex.Replace(rawStatement, @"\t|\n|\r", ""),
-                @"\s+",
-                " ");
+            return Regex
+                .Replace(
+                    Regex.Replace(rawStatement, @"\t|\n|\r", ""),
+                    @"\s+",
+                    " ")
+                .Trim();
         }
 
         protected virtual void ExtractValues<TObject>(TObject @object, Dictionary<string, object> queryParams)
