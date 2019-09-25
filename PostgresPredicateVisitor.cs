@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Necessity.UnitOfWork.Predicates;
+using Necessity.UnitOfWork.Schema;
 
 namespace Necessity.UnitOfWork.Postgres
 {
@@ -27,16 +28,16 @@ namespace Necessity.UnitOfWork.Postgres
         private const string ParameterPrefix = "@";
 
         public PostgresPredicateVisitor(
-            Func<string, (string columnName, string dbType)> getColumnMappingForProperty,
+            Func<string, Mapping> getPropertyMapping,
             Dictionary<string, object> queryParams)
         {
-            GetColumnMappingForProperty = getColumnMappingForProperty;
+            GetPropertyMapping = getPropertyMapping;
             QueryParams = queryParams;
         }
 
         public Dictionary<string, object> QueryParams { get; }
 
-        private Func<string, (string columnName, string dbType)> GetColumnMappingForProperty { get; }
+        private Func<string, Mapping> GetPropertyMapping { get; }
 
         public string VisitPredicate(Predicate predicate)
         {
@@ -137,13 +138,14 @@ namespace Necessity.UnitOfWork.Postgres
             var pathParts = propertyName.Split(PathSeparator);
             var propertyBaseName = pathParts.First();
 
-            var mapping = GetColumnMappingForProperty(propertyBaseName);
+            var mapping = GetPropertyMapping(propertyBaseName);
 
-            var isPropertyAccess = pathParts.Length > 1 && mapping.dbType == "jsonb";
+            var isPropertyAccess = pathParts.Length > 1
+                && mapping.NonStandardDbType == NonStandardDbType.JsonB;
 
             return isPropertyAccess
-                ? GetJsonAccessOperator(mapping.columnName, pathParts.Skip(1), value)
-                : mapping.columnName;
+                ? GetJsonAccessOperator(mapping.ColumnName, pathParts.Skip(1), value)
+                : mapping.ColumnName;
         }
 
         private string GetOperator(Operator op, bool negate, bool isJsonColumn = false)
@@ -163,7 +165,6 @@ namespace Necessity.UnitOfWork.Postgres
         private string Pad(string paddable, string padLeft = " ", string padRight = null)
         {
             return padLeft + paddable + (padRight ?? padLeft);
-
         }
     }
 }

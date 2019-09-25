@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -6,6 +7,8 @@ using Necessity.UnitOfWork.Schema;
 
 namespace Necessity.UnitOfWork.Postgres
 {
+    using QueryParameters = Dictionary<string, object>;
+
     public class DefaultQueryBuilder<TEntity, TKey> : IQueryBuilder<TEntity, TKey>
     {
         public DefaultQueryBuilder(ISchema schema)
@@ -15,154 +18,145 @@ namespace Necessity.UnitOfWork.Postgres
 
         public ISchema Schema { get; }
 
-        public virtual string Get(TKey key, Dictionary<string, object> queryParams)
+        public virtual string Get(TKey key, QueryParameters queryParams)
         {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
-
             return Find(
                 Predicate.Create(x =>
-                    x.Binary(Operator.Eq, mapping[Schema.Columns.KeyName], key)),
+                    x.Binary(Operator.Eq, Schema.Columns.KeyProperty, key)),
                 queryParams);
         }
 
-        public virtual string GetAll(Dictionary<string, object> queryParams)
+        public virtual string GetAll(QueryParameters queryParams)
         {
             return Find(null, queryParams);
         }
 
-        public string Find(Predicate predicate, Dictionary<string, object> queryParams)
+        public string Find(Predicate predicate, QueryParameters queryParams)
         {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
-
-            var sqlWhere = predicate?
-                .Accept(new PostgresPredicateVisitor(p => Schema.Columns.Mapping[p], queryParams));
-
             return FormatSqlStatement(
-                $@"
-                    SELECT { GetColumnList(mapping) }
+                 $@"
+                    SELECT { GetColumnList(Schema.Columns.Mapping.Select(m => m.Value.ColumnName)) }
                     FROM { Schema.TableName }
-                    {(predicate != null
-                        ? $"WHERE { sqlWhere }"
-                        : "")}
+                    { GetWhereClause(predicate, queryParams) }
                 ");
         }
 
-        public virtual string Create(TEntity entity, Dictionary<string, object> queryParams)
+        public virtual string Create(TEntity entity, QueryParameters queryParams)
         {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
-
             ExtractValues(entity, queryParams);
-
-            return GetInsertStatement(mapping);
+            return GetInsertStatement(Schema.Columns.Mapping);
         }
 
-        public virtual string Update(TEntity entity, Dictionary<string, object> queryParams)
+        public virtual string Update(TEntity entity, QueryParameters queryParams)
         {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
-
             ExtractValues(entity, queryParams);
-
-            return GetUpdateStatement(mapping);
+            return GetUpdateStatement(Schema.Columns.Mapping);
         }
 
-        public virtual string Upsert(TEntity entity, OnConflict onConflict, Dictionary<string, object> queryParams)
+        public virtual string Upsert(TEntity entity, OnConflict onConflict, QueryParameters queryParams)
         {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
-
             ExtractValues(entity, queryParams);
-
-            return GetUpsertStatement(mapping, onConflict);
+            return GetUpsertStatement(Schema.Columns.Mapping, onConflict);
         }
 
-        public virtual string Delete(TKey key, Dictionary<string, object> queryParams)
+        public virtual string Delete(TKey key, QueryParameters queryParams)
         {
-            var mapping = ReverseMap(Schema.Columns.Mapping);
+            var predicate = Predicate
+                .Create(x =>
+                    x.Binary(Operator.Eq, Schema.Columns.KeyProperty, key));
 
-            queryParams.Add(mapping[Schema.Columns.KeyName], key);
-
-            return GetDeleteStatement(mapping);
+            return FormatSqlStatement(
+                $@"
+                    DELETE
+                    FROM { Schema.TableName }
+                    { GetWhereClause(predicate, queryParams) }
+                ");
         }
 
-        protected virtual string GetTypeCastForDynamicParameter(string parameterName, string dbType) =>
-            !string.IsNullOrWhiteSpace(dbType)
-                ? $"CAST({ parameterName } as { dbType })"
+        protected virtual string GetTypeCastForDynamicParameter(string parameterName, NonStandardDbType? dbType)
+        {
+            return dbType != null
+                ? $"CAST({ parameterName } as jsonb)"
                 : parameterName;
-
-        protected virtual string FormatDynamicParameter(string parameterName) =>
-            $"@{ parameterName }";
-
-        protected virtual Dictionary<string, string> ReverseMap(Dictionary<string, (string columnName, string dbType)> propertyColumnDataMapping)
-        {
-            return propertyColumnDataMapping
-                .ToDictionary(
-                    x => x.Value.columnName,
-                    x => GetTypeCastForDynamicParameter(
-                        FormatDynamicParameter(x.Key),
-                        x.Value.dbType));
         }
 
-        protected virtual string GetColumnList(Dictionary<string, string> columnPropertyExpressionMapping)
+        protected virtual string FormatDynamicParameter(string parameterName)
         {
-            return string.Join(",", columnPropertyExpressionMapping.Keys);
+            return $"@{ parameterName }";
+        }
+
+        protected virtual string GetColumnList(IEnumerable<string> columns)
+        {
+            return string.Join(",", columns);
         }
 
         protected virtual string GetColumnValueList(
-            Dictionary<string, string> columnPropertyExpressionMapping,
+            Dictionary<string, string> columnParameterMap,
             bool insert = true)
         {
             return $@"
-                ({ string.Join(",", columnPropertyExpressionMapping.Keys) }) 
+                ({ string.Join(",", columnParameterMap.Keys) }) 
                 {(insert ? "VALUES" : "=")}
-                ({ string.Join(",", columnPropertyExpressionMapping.Values) })
+                ({ string.Join(",", columnParameterMap.Values) })
             ";
         }
 
-        protected virtual Dictionary<string, string> GetExcludedColumns(Dictionary<string, string> columnPropertyExpressionMapping)
+        protected virtual PropertyColumnMap ExcludeColumnsForUpdate(PropertyColumnMap mapping)
         {
-            return columnPropertyExpressionMapping
-                .Keys
-                .ToDictionary(x => x, x => $"EXCLUDED.{x}");
+            return new PropertyColumnMap(
+                mapping
+                    .Where(x => x.Key != Schema.Columns.KeyProperty)
+                    .ToDictionary(x => x.Key, x => x.Value));
         }
 
-        protected virtual Dictionary<string, string> ExcludeColumnsForUpdate(Dictionary<string, string> columnPropertyExpressionMapping)
+        protected virtual Dictionary<string, string> GetColumnParameterMap(PropertyColumnMap mapping)
         {
-            return columnPropertyExpressionMapping
-                .Where(x => x.Key != Schema.Columns.KeyName)
-                .ToDictionary(x => x.Key, x => x.Value);
+            return mapping
+                .ToDictionary(
+                    x => x.Value.ColumnName,
+                    x => GetTypeCastForDynamicParameter(
+                        FormatDynamicParameter(x.Key),
+                        x.Value.NonStandardDbType));
         }
 
-        protected virtual string GetInsertStatement(Dictionary<string, string> columnPropertyExpressionMapping)
+        protected virtual string GetInsertStatement(PropertyColumnMap mapping)
         {
             return FormatSqlStatement(
                 $@"
                     INSERT INTO { Schema.TableName }
-                    { GetColumnValueList(columnPropertyExpressionMapping, insert: true) }
+                    { GetColumnValueList(GetColumnParameterMap(mapping), insert: true) }
                 ");
         }
 
-        protected virtual string GetUpdateStatement(Dictionary<string, string> columnPropertyExpressionMapping)
+        protected virtual string GetUpdateStatement(PropertyColumnMap mapping)
         {
-            var updateColumns = ExcludeColumnsForUpdate(columnPropertyExpressionMapping);
+            var updateColumnsMapping = ExcludeColumnsForUpdate(mapping);
+            var columnsParameterMap = GetColumnParameterMap(updateColumnsMapping);
+
+            var keyColumn = Schema.Columns.Mapping[Schema.Columns.KeyProperty].ColumnName;
 
             return FormatSqlStatement(
                 $@"
                     UPDATE { Schema.TableName }
                     SET
-                    { GetColumnValueList(updateColumns, insert: false) }
-                    WHERE { Schema.Columns.KeyName } = { columnPropertyExpressionMapping[Schema.Columns.KeyName] }
+                    { GetColumnValueList(columnsParameterMap, insert: false) }
+                    WHERE { keyColumn } = { columnsParameterMap[keyColumn] }
                 ");
         }
 
-        protected virtual string GetUpsertStatement(Dictionary<string, string> columnPropertyExpressionMapping, OnConflict onConflict)
+        protected virtual string GetUpsertStatement(PropertyColumnMap mapping, OnConflict onConflict)
         {
-            var insertColumnExpressions = GetInsertStatement(columnPropertyExpressionMapping);
+            var insertColumnExpressions = GetInsertStatement(mapping);
+
+            var updateColumnsMapping = ExcludeColumnsForUpdate(mapping);
             var updateColumnExpressions = GetColumnValueList(
-                GetExcludedColumns(
-                    ExcludeColumnsForUpdate(columnPropertyExpressionMapping)),
-                    insert: false);
+                GetColumnParameterMap(updateColumnsMapping)
+                    .ToDictionary(x => x.Key, x => $"EXCLUDED.{x.Key}"));
+
+            var keyColumn = Schema.Columns.Mapping[Schema.Columns.KeyProperty].ColumnName;
 
             var sql = insertColumnExpressions;
-            var onConflictExpression = $"ON CONFLICT({ Schema.Columns.KeyName })";
+            var onConflictExpression = $"ON CONFLICT({ keyColumn })";
 
             switch (onConflict)
             {
@@ -187,19 +181,16 @@ namespace Necessity.UnitOfWork.Postgres
             return FormatSqlStatement(sql);
         }
 
-        protected virtual string GetDeleteStatement(Dictionary<string, string> columnPropertyExpressionMapping)
+        protected virtual string GetWhereClause(Predicate predicate, QueryParameters queryParams)
         {
-            return FormatSqlStatement(
-                $@"
-                    DELETE
-                    FROM { Schema.TableName }
-                    WHERE { GetDefaultFilterExpression(columnPropertyExpressionMapping) }
-                ");
-        }
+            var sqlWhere = predicate?.Accept(
+                    new PostgresPredicateVisitor(
+                        p => Schema.Columns.Mapping[p],
+                        queryParams));
 
-        protected virtual string GetDefaultFilterExpression(Dictionary<string, string> columnPropertyExpressionMapping)
-        {
-            return $"{ Schema.Columns.KeyName } = { columnPropertyExpressionMapping[Schema.Columns.KeyName] }";
+            return sqlWhere != null
+                ? $"WHERE { sqlWhere }"
+                : string.Empty;
         }
 
         protected virtual string FormatSqlStatement(string rawStatement)

@@ -16,7 +16,7 @@ namespace Necessity.UnitOfWork.Postgres.Schema
             var entityType = typeof(TEntity);
             var tableName = GetTableName(entityType, options.PluralizeTableNames);
             var properties = GetPropertyColumnMapping(entityType);
-            var primaryKey = GetPrimaryKey(properties.Values.Select(v => v.columnName));
+            var primaryKey = GetPrimaryKey(properties.Keys);
 
             var schema = new ByConventionSchema(
                 tableName,
@@ -41,27 +41,37 @@ namespace Necessity.UnitOfWork.Postgres.Schema
                 : tableName;
         }
 
-        private static string GuessColumnDbType(Type propertyType)
+        private static NonStandardDbType? GuessColumnDbType(Type propertyType)
         {
             return TypeHelpers
                 .IsJsonNetType(propertyType)
-                    ? "jsonb"
-                    : null;
+                    ? NonStandardDbType.JsonB
+                    : (NonStandardDbType?)null;
         }
 
-        private static Dictionary<string, (string columnName, string dbType)> GetPropertyColumnMapping(Type entityType)
+        private static PropertyColumnMap GetPropertyColumnMapping(Type entityType)
         {
-            return entityType
+            var map = new PropertyColumnMap();
+
+            entityType
                 .GetProperties()
-                .ToDictionary(
-                    x => x.Name,
-                    x => (x.Name.ToSnakeCase(), GuessColumnDbType(x.PropertyType)),
-                    StringComparer.OrdinalIgnoreCase);
+                .ToList()
+                .ForEach(p =>
+                    map.Add(
+                        p.Name,
+                        new Mapping(
+                            p.Name,
+                            p.Name.ToSnakeCase(),
+                            GuessColumnDbType(p.PropertyType))));
+
+            return map;
         }
 
-        private static string GetPrimaryKey(IEnumerable<string> columnNames)
+        private static string GetPrimaryKey(IEnumerable<string> propertyNames)
         {
-            return columnNames.First(c => PrimaryKeyCandidates.Contains(c));
+            return propertyNames.First(c =>
+                PrimaryKeyCandidates.Any(pkc =>
+                    pkc.Equals(c, StringComparison.OrdinalIgnoreCase)));
         }
     }
 
@@ -81,13 +91,13 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 
     public class ByConventionSchemaColumns : ISchemaColumns
     {
-        public ByConventionSchemaColumns(string keyName, Dictionary<string, (string, string)> mapping)
+        public ByConventionSchemaColumns(string keyProperty, PropertyColumnMap mapping)
         {
-            KeyName = keyName;
+            KeyProperty = keyProperty;
             Mapping = mapping;
         }
 
-        public string KeyName { get; set; }
-        public Dictionary<string, (string columnName, string dbType)> Mapping { get; }
+        public string KeyProperty { get; set; }
+        public PropertyColumnMap Mapping { get; }
     }
 }
