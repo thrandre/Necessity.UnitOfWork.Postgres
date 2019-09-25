@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -34,9 +35,9 @@ namespace Necessity.UnitOfWork.Postgres
         {
             return FormatSqlStatement(
                  $@"
-                    SELECT { GetColumnList(Schema.Columns.Mapping.Select(m => m.Value.ColumnName)) }
-                    FROM { Schema.TableName }
-                    { GetWhereClause(predicate, queryParams) }
+                    { GetSelectClause(Schema.Columns.Mapping) }
+                    { GetWhereClause(Schema.Columns.Mapping, predicate, queryParams) }
+                    { GetOrderByClause(Schema.Columns.Mapping) }
                 ");
         }
 
@@ -68,7 +69,7 @@ namespace Necessity.UnitOfWork.Postgres
                 $@"
                     DELETE
                     FROM { Schema.TableName }
-                    { GetWhereClause(predicate, queryParams) }
+                    { GetWhereClause(Schema.Columns.Mapping, predicate, queryParams) }
                 ");
         }
 
@@ -108,9 +109,17 @@ namespace Necessity.UnitOfWork.Postgres
                     .ToDictionary(x => x.Key, x => x.Value));
         }
 
+        protected virtual PropertyColumnMap ExcludeComputedColumnsForUpdateAndInserts(PropertyColumnMap mapping)
+        {
+            return new PropertyColumnMap(
+                mapping
+                    .Where(x => x.Value.CustomSqlExpression == null)
+                    .ToDictionary(x => x.Key, x => x.Value));
+        }
+
         protected virtual Dictionary<string, string> GetColumnParameterMap(PropertyColumnMap mapping)
         {
-            return mapping
+            return ExcludeComputedColumnsForUpdateAndInserts(mapping)
                 .ToDictionary(
                     x => x.Value.ColumnName,
                     x => GetTypeCastForDynamicParameter(
@@ -136,7 +145,7 @@ namespace Necessity.UnitOfWork.Postgres
 
             return FormatSqlStatement(
                 $@"
-                    UPDATE { Schema.TableName }
+                    UPDATE { Schema.TableName } { Schema.TableAlias }
                     SET
                     { GetColumnValueList(columnsParameterMap, insert: false) }
                     WHERE { keyColumn } = { columnsParameterMap[keyColumn] }
@@ -180,16 +189,37 @@ namespace Necessity.UnitOfWork.Postgres
             return FormatSqlStatement(sql);
         }
 
-        protected virtual string GetWhereClause(Predicate predicate, QueryParameters queryParams)
+        protected virtual string GetSelectClause(PropertyColumnMap mapping)
+        {
+            return
+                $@"
+                    SELECT
+                    { GetColumnList(mapping.Values.Select(v => v.CustomSqlExpression ?? v.ColumnName)) }
+                    FROM { Schema.TableName } { Schema.TableAlias }
+                    { string.Join(Environment.NewLine, Schema.Joins) }
+                ";
+        }
+
+        protected virtual string GetWhereClause(PropertyColumnMap mapping, Predicate predicate, QueryParameters queryParams)
         {
             var sqlWhere = predicate?.Accept(
                     new PostgresPredicateVisitor(
-                        p => Schema.Columns.Mapping[p],
+                        p => mapping[p],
                         queryParams));
 
             return sqlWhere != null
                 ? $"WHERE { sqlWhere }"
                 : string.Empty;
+        }
+
+        protected virtual string GetOrderByClause(PropertyColumnMap mapping)
+        {
+            if (string.IsNullOrWhiteSpace(Schema.DefaultOrderBy.propertyName))
+            {
+                return string.Empty;
+            }
+
+            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName] } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
         }
 
         protected virtual string FormatSqlStatement(string rawStatement)

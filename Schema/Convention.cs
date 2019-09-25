@@ -15,11 +15,13 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 
             var entityType = typeof(TEntity);
             var tableName = GetTableName(entityType, options.PluralizeTableNames);
-            var properties = GetPropertyColumnMapping(entityType);
+            var tableAlias = GetTableAlias(tableName);
+            var properties = GetPropertyColumnMapping(entityType, tableAlias);
             var primaryKey = GetPrimaryKey(properties.Keys);
 
             var schema = new ByConventionSchema(
                 tableName,
+                tableAlias,
                 new ByConventionSchemaColumns(primaryKey, properties));
 
             postConfigure?.Invoke(schema);
@@ -49,7 +51,7 @@ namespace Necessity.UnitOfWork.Postgres.Schema
                     : (NonStandardDbType?)null;
         }
 
-        private static PropertyColumnMap GetPropertyColumnMapping(Type entityType)
+        private static PropertyColumnMap GetPropertyColumnMapping(Type entityType, string tableAlias)
         {
             return new PropertyColumnMap(
                 entityType
@@ -58,7 +60,7 @@ namespace Necessity.UnitOfWork.Postgres.Schema
                         p => p.Name,
                         p => new Mapping(
                             p.Name,
-                            p.Name.ToSnakeCase(),
+                            $"{tableAlias}.{p.Name.ToSnakeCase()}",
                             GuessColumnDbType(p.PropertyType)
                         )));
         }
@@ -69,38 +71,13 @@ namespace Necessity.UnitOfWork.Postgres.Schema
                 PrimaryKeyCandidates.Any(pkc =>
                     pkc.Equals(c, StringComparison.OrdinalIgnoreCase)));
         }
-    }
 
-    public class ByConventionSchema : ISchema
-    {
-        public ByConventionSchema(string tableName, ByConventionSchemaColumns columns)
+        private static string GetTableAlias(string tableName)
         {
-            Columns = columns;
-            TableName = tableName;
+            return string.Concat(
+                tableName
+                    .Split('_')
+                    .Select(x => x.Substring(0, 1)));
         }
-
-        public string TableName { get; set; }
-        public ByConventionSchemaColumns Columns { get; }
-        ISchemaColumns ISchema.Columns => Columns;
-
-        public string TableAlias => throw new NotImplementedException();
-
-        public string TableFullName => throw new NotImplementedException();
-
-        public List<Join> Joins => throw new NotImplementedException();
-
-        public (string propertyName, OrderDirection direction) DefaultOrderBy => throw new NotImplementedException();
-    }
-
-    public class ByConventionSchemaColumns : ISchemaColumns
-    {
-        public ByConventionSchemaColumns(string keyProperty, PropertyColumnMap mapping)
-        {
-            KeyProperty = keyProperty;
-            Mapping = mapping;
-        }
-
-        public string KeyProperty { get; set; }
-        public PropertyColumnMap Mapping { get; }
     }
 }
