@@ -219,7 +219,7 @@ namespace Necessity.UnitOfWork.Postgres
                 return string.Empty;
             }
 
-            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName] } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
+            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName].ColumnName } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
         }
 
         protected virtual string FormatSqlStatement(string rawStatement)

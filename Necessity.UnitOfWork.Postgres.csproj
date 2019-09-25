@@ -6,7 +6,7 @@
     <RootNamespace>Necessity.UnitOfWork.Postgres</RootNamespace>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>thrandre.Necessity.UnitOfWork.Postgres</PackageId>
-    <Version>2.1.0</Version>
+    <Version>2.1.1</Version>
     <Authors>Necessity</Authors>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
