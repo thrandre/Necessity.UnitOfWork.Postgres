@@ -60,7 +60,7 @@ namespace Necessity.UnitOfWork.Postgres.Schema
                         p => p.Name,
                         p => new Mapping(
                             p.Name,
-                            $"{tableAlias}.{p.Name.ToSnakeCase()}",
+                            p.Name.ToSnakeCase(),
                             GuessColumnDbType(p.PropertyType)
                         )));
         }
