@@ -7,7 +7,7 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 {
     public class Convention
     {
-        public static ISchema GetPostgresSchema<TEntity>(Action<ConventionOptions> configure = null, Action<ByConventionSchema> postConfigure = null)
+        public static ISchema CreateSchema<TEntity>(Action<ConventionOptions> configure = null, Action<ByConventionSchema> postConfigure = null)
         {
             var options = new ConventionOptions();
 
@@ -51,20 +51,16 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 
         private static PropertyColumnMap GetPropertyColumnMapping(Type entityType)
         {
-            var map = new PropertyColumnMap();
-
-            entityType
-                .GetProperties()
-                .ToList()
-                .ForEach(p =>
-                    map.Add(
-                        p.Name,
-                        new Mapping(
+            return new PropertyColumnMap(
+                entityType
+                    .GetProperties()
+                    .ToDictionary(
+                        p => p.Name,
+                        p => new Mapping(
                             p.Name,
                             p.Name.ToSnakeCase(),
-                            GuessColumnDbType(p.PropertyType))));
-
-            return map;
+                            GuessColumnDbType(p.PropertyType)
+                        )));
         }
 
         private static string GetPrimaryKey(IEnumerable<string> propertyNames)
@@ -85,8 +81,15 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 
         public string TableName { get; set; }
         public ByConventionSchemaColumns Columns { get; }
-
         ISchemaColumns ISchema.Columns => Columns;
+
+        public string TableAlias => throw new NotImplementedException();
+
+        public string TableFullName => throw new NotImplementedException();
+
+        public List<Join> Joins => throw new NotImplementedException();
+
+        public (string propertyName, OrderDirection direction) DefaultOrderBy => throw new NotImplementedException();
     }
 
     public class ByConventionSchemaColumns : ISchemaColumns
