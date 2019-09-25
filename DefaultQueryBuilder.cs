@@ -196,7 +196,7 @@ namespace Necessity.UnitOfWork.Postgres
                     SELECT
                     { GetColumnList(mapping.Values.Select(v => v.CustomSqlExpression ?? v.ColumnName)) }
                     FROM { Schema.TableName } { Schema.TableAlias }
-                    { string.Join(Environment.NewLine, Schema.Joins) }
+                    { string.Join(Environment.NewLine, Schema.Joins.Select(j => j.JoinExpression)) }
                 ";
         }
 
