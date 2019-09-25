@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Necessity.UnitOfWork.Schema;
 
@@ -17,7 +16,6 @@ namespace Necessity.UnitOfWork.Postgres.Schema
         public string TableName { get; set; }
         public string TableAlias { get; set; }
         public ByConventionSchemaColumns Columns { get; }
-        public string TableFullName => throw new NotImplementedException();
         public List<Join> Joins { get; }
         public (string propertyName, OrderDirection direction) DefaultOrderBy { get; set; }
 

@@ -6,13 +6,13 @@
     <RootNamespace>Necessity.UnitOfWork.Postgres</RootNamespace>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>thrandre.Necessity.UnitOfWork.Postgres</PackageId>
-    <Version>2.1.2</Version>
+    <Version>2.1.3</Version>
     <Authors>Necessity</Authors>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="thrandre.Necessity.UnitOfWork" Version="3.0.0" />
+    <PackageReference Include="thrandre.Necessity.UnitOfWork" Version="3.1.3" />
   </ItemGroup>
 
 </Project>

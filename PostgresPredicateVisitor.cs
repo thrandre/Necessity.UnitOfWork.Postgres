@@ -28,16 +28,16 @@ namespace Necessity.UnitOfWork.Postgres
         private const string ParameterPrefix = "@";
 
         public PostgresPredicateVisitor(
-            Func<string, Mapping> getPropertyMapping,
+            ISchema schema,
             Dictionary<string, object> queryParams)
         {
-            GetPropertyMapping = getPropertyMapping;
+            Schema = schema;
             QueryParams = queryParams;
         }
 
         public Dictionary<string, object> QueryParams { get; }
 
-        private Func<string, Mapping> GetPropertyMapping { get; }
+        private ISchema Schema { get; }
 
         public string VisitPredicate(Predicate predicate)
         {
@@ -138,14 +138,16 @@ namespace Necessity.UnitOfWork.Postgres
             var pathParts = propertyName.Split(PathSeparator);
             var propertyBaseName = pathParts.First();
 
-            var mapping = GetPropertyMapping(propertyBaseName);
+            var mapping = Schema.Columns.Mapping[propertyBaseName];
 
             var isPropertyAccess = pathParts.Length > 1
                 && mapping.NonStandardDbType == NonStandardDbType.JsonB;
 
+            var columnName = mapping.QualifiedColumnName(Schema);
+
             return isPropertyAccess
-                ? GetJsonAccessOperator(mapping.ColumnName, pathParts.Skip(1), value)
-                : mapping.ColumnName;
+                ? GetJsonAccessOperator(columnName, pathParts.Skip(1), value)
+                : columnName;
         }
 
         private string GetOperator(Operator op, bool negate, bool isJsonColumn = false)

@@ -194,7 +194,7 @@ namespace Necessity.UnitOfWork.Postgres
             return
                 $@"
                     SELECT
-                    { GetColumnList(mapping.Values.Select(v => v.CustomSqlExpression ?? v.ColumnName)) }
+                    { GetColumnList(mapping.Values.Select(v => v.CustomSqlExpression ?? v.QualifiedColumnName(Schema))) }
                     FROM { Schema.TableName } { Schema.TableAlias }
                     { string.Join(Environment.NewLine, Schema.Joins.Select(j => j.JoinExpression)) }
                 ";
@@ -204,7 +204,7 @@ namespace Necessity.UnitOfWork.Postgres
         {
             var sqlWhere = predicate?.Accept(
                     new PostgresPredicateVisitor(
-                        p => mapping[p],
+                        Schema,
                         queryParams));
 
             return sqlWhere != null
@@ -219,7 +219,7 @@ namespace Necessity.UnitOfWork.Postgres
                 return string.Empty;
             }
 
-            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName].ColumnName } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
+            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName].QualifiedColumnName(Schema) } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
         }
 
         protected virtual string FormatSqlStatement(string rawStatement)
