@@ -138,8 +138,8 @@ namespace Necessity.UnitOfWork.Postgres
 
         protected virtual string GetUpdateStatement(PropertyColumnMap mapping)
         {
-            var updateColumnsMapping = ExcludeColumnsForUpdate(mapping);
-            var columnsParameterMap = GetColumnParameterMap(updateColumnsMapping);
+            var columnsParameterMap = GetColumnParameterMap(mapping);
+            var updateColumnsParameterMap = GetColumnParameterMap(ExcludeColumnsForUpdate(mapping));
 
             var keyColumn = Schema.Columns.Mapping[Schema.Columns.KeyProperty].ColumnName;
 
@@ -147,7 +147,7 @@ namespace Necessity.UnitOfWork.Postgres
                 $@"
                     UPDATE { Schema.TableName } { Schema.TableAlias }
                     SET
-                    { GetColumnValueList(columnsParameterMap, insert: false) }
+                    { GetColumnValueList(updateColumnsParameterMap, insert: false) }
                     WHERE { keyColumn } = { columnsParameterMap[keyColumn] }
                 ");
         }
@@ -159,7 +159,7 @@ namespace Necessity.UnitOfWork.Postgres
             var updateColumnsMapping = ExcludeColumnsForUpdate(mapping);
             var updateColumnExpressions = GetColumnValueList(
                 GetColumnParameterMap(updateColumnsMapping)
-                    .ToDictionary(x => x.Key, x => $"EXCLUDED.{x.Key}"));
+                    .ToDictionary(x => x.Key, x => $"EXCLUDED.{x.Key}"), insert: false);
 
             var keyColumn = Schema.Columns.Mapping[Schema.Columns.KeyProperty].ColumnName;
 
