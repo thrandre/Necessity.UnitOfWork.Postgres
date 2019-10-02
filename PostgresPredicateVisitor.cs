@@ -62,8 +62,19 @@ namespace Necessity.UnitOfWork.Postgres
             var rightOperand = GetRightOperand(dynamicParameter, propertyValue);
             var leftOperand = GetLeftOperand(binaryPredicate.Op, propertyName, propertyValue);
 
-            var @operator = GetOperator(binaryPredicate.Op, binaryPredicate.Negate, TypeHelpers.IsJsonNetType(propertyValue.GetType()));
+            var @operator = GetOperator(binaryPredicate.Op, binaryPredicate.Negate,
+                propertyValue != null && TypeHelpers.IsJsonNetType(propertyValue.GetType()));
 
+            if (binaryPredicate.Op == Operator.Eq)
+            {
+                var equals = leftOperand + Pad(@operator) + rightOperand;
+                var nullChecks = $"ROW({rightOperand},{leftOperand}) IS NULL";
+
+                return Pad(
+                    string.Join(Pad(GetOperator(Operator.Or, false)), equals, nullChecks),
+                    "(", ")"
+                );
+            }
             return leftOperand
                 + Pad(@operator)
                 + rightOperand;
