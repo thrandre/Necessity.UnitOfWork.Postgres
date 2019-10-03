@@ -62,8 +62,33 @@ namespace Necessity.UnitOfWork.Postgres
             var rightOperand = GetRightOperand(dynamicParameter, propertyValue);
             var leftOperand = GetLeftOperand(binaryPredicate.Op, propertyName, propertyValue);
 
-            var @operator = GetOperator(binaryPredicate.Op, binaryPredicate.Negate, TypeHelpers.IsJsonNetType(propertyValue.GetType()));
+            var @operator = GetOperator(binaryPredicate.Op, binaryPredicate.Negate,
+                propertyValue != null && TypeHelpers.IsJsonNetType(propertyValue.GetType()));
 
+            if (binaryPredicate.Op == Operator.Eq)
+            {
+                var equals = leftOperand + Pad(@operator) + rightOperand;
+                var bothIsNull = $"({leftOperand} IS NULL AND {rightOperand} IS NULL)";
+                if (!binaryPredicate.Negate)
+                {
+                    return Pad(
+                        string.Join(
+                            Pad(GetOperator(Operator.Or, false)),
+                            equals, bothIsNull),
+                        "(", ")"
+                    );
+                }
+
+                var leftIsNull = $"({leftOperand} IS NULL AND {rightOperand} IS NOT NULL)";
+                var rightIsNull = $"({leftOperand} IS NOT NULL AND {rightOperand} IS NULL)";
+
+                return Pad(
+                    string.Join(
+                        Pad(GetOperator(Operator.Or, false)),
+                        equals, leftIsNull, rightIsNull),
+                    "(", ")"
+                );
+            }
             return leftOperand
                 + Pad(@operator)
                 + rightOperand;
@@ -75,7 +100,7 @@ namespace Necessity.UnitOfWork.Postgres
 
             queryParams.Add(dynamicParameterName, value);
 
-            return "@" + dynamicParameterName;
+            return ParameterPrefix + dynamicParameterName;
         }
 
         private string CastToMatchValue(string columnOrPropertyName, object value, string[] validCasts = null)
