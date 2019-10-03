@@ -26,6 +26,11 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 
             postConfigure?.Invoke(schema);
 
+            if(string.IsNullOrWhiteSpace(schema.Columns.KeyProperty))
+            {
+                throw new ArgumentNullException(nameof(schema.Columns.KeyProperty));
+            }
+
             return schema;
         }
 
@@ -67,9 +72,18 @@ namespace Necessity.UnitOfWork.Postgres.Schema
 
         private static string GetPrimaryKey(IEnumerable<string> propertyNames)
         {
-            return propertyNames.First(c =>
-                PrimaryKeyCandidates.Any(pkc =>
-                    pkc.Equals(c, StringComparison.OrdinalIgnoreCase)));
+            return propertyNames
+                .Select((p, i) =>
+                    new
+                    {
+                        Name = p,
+                        Index = i
+                    })
+                .FirstOrDefault(c =>
+                    PrimaryKeyCandidates.Any(pkc =>
+                        c.Name.Equals(pkc, StringComparison.OrdinalIgnoreCase) ||
+                            (c.Index == 0 && c.Name.EndsWith(pkc, StringComparison.OrdinalIgnoreCase))))
+                ?.Name;
         }
 
         private static string GetTableAlias(string tableName)
