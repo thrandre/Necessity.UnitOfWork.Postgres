@@ -68,10 +68,24 @@ namespace Necessity.UnitOfWork.Postgres
             if (binaryPredicate.Op == Operator.Eq)
             {
                 var equals = leftOperand + Pad(@operator) + rightOperand;
-                var nullChecks = $"ROW({rightOperand},{leftOperand}) IS NULL";
+                var bothIsNull = $"({leftOperand} IS NULL AND {rightOperand} IS NULL)";
+                if (!binaryPredicate.Negate)
+                {
+                    return Pad(
+                        string.Join(
+                            Pad(GetOperator(Operator.Or, false)),
+                            equals, bothIsNull),
+                        "(", ")"
+                    );
+                }
+
+                var leftIsNull = $"({leftOperand} IS NULL AND {rightOperand} IS NOT NULL)";
+                var rightIsNull = $"({leftOperand} IS NOT NULL AND {rightOperand} IS NULL)";
 
                 return Pad(
-                    string.Join(Pad(GetOperator(Operator.Or, false)), equals, nullChecks),
+                    string.Join(
+                        Pad(GetOperator(Operator.Or, false)),
+                        equals, leftIsNull, rightIsNull),
                     "(", ")"
                 );
             }
@@ -86,7 +100,7 @@ namespace Necessity.UnitOfWork.Postgres
 
             queryParams.Add(dynamicParameterName, value);
 
-            return "@" + dynamicParameterName;
+            return ParameterPrefix + dynamicParameterName;
         }
 
         private string CastToMatchValue(string columnOrPropertyName, object value, string[] validCasts = null)
