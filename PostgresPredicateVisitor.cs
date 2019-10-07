@@ -226,7 +226,7 @@ namespace Necessity.UnitOfWork.Postgres
             var isPropertyAccess = pathParts.Length > 1
                 && mapping.NonStandardDbType == NonStandardDbType.JsonB;
 
-            var columnName = mapping.QualifiedColumnName(Schema);
+            var columnName = mapping.QualifiedColumnNameForSelect(Schema);
 
             return isPropertyAccess
                 ? GetJsonAccessOperator(columnName, pathParts.Skip(1), value)

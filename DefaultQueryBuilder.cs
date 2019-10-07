@@ -35,7 +35,7 @@ namespace Necessity.UnitOfWork.Postgres
         {
             return FormatSqlStatement(
                  $@"
-                    { GetSelectClause(Schema.Columns.Mapping) }
+                    { GetSelectClause(Schema.Columns.Mapping, queryParams) }
                     { GetWhereClause(Schema.Columns.Mapping, predicate, queryParams) }
                     { GetOrderByClause(Schema.Columns.Mapping) }
                 ");
@@ -44,19 +44,19 @@ namespace Necessity.UnitOfWork.Postgres
         public virtual string Create(TEntity entity, QueryParameters queryParams)
         {
             ExtractValues(entity, queryParams);
-            return GetInsertStatement(Schema.Columns.Mapping);
+            return GetInsertStatement(Schema.Columns.Mapping, queryParams);
         }
 
         public virtual string Update(TEntity entity, QueryParameters queryParams)
         {
             ExtractValues(entity, queryParams);
-            return GetUpdateStatement(Schema.Columns.Mapping);
+            return GetUpdateStatement(Schema.Columns.Mapping, queryParams);
         }
 
         public virtual string Upsert(TEntity entity, OnConflict onConflict, QueryParameters queryParams)
         {
             ExtractValues(entity, queryParams);
-            return GetUpsertStatement(Schema.Columns.Mapping, onConflict);
+            return GetUpsertStatement(Schema.Columns.Mapping, onConflict, queryParams);
         }
 
         public virtual string Delete(TKey key, QueryParameters queryParams)
@@ -112,7 +112,7 @@ namespace Necessity.UnitOfWork.Postgres
         {
             return new PropertyColumnMap(
                 mapping
-                    .Where(x => x.Key != Schema.Columns.KeyProperty)
+                    .Where(x => x.Key != Schema.Columns.KeyProperty && x.Value.OnInsert == null)
                     .ToDictionary(x => x.Key, x => x.Value));
         }
 
@@ -120,33 +120,34 @@ namespace Necessity.UnitOfWork.Postgres
         {
             return new PropertyColumnMap(
                 mapping
-                    .Where(x => x.Value.CustomSqlExpression == null)
+                    .Where(x => x.Value.OnSelect == null)
                     .ToDictionary(x => x.Key, x => x.Value));
         }
 
-        protected virtual Dictionary<string, string> GetColumnParameterMap(PropertyColumnMap mapping)
+        protected virtual Dictionary<string, string> GetColumnParameterMap(PropertyColumnMap mapping, QueryParameters queryParams)
         {
             return ExcludeComputedColumnsForUpdateAndInserts(mapping)
                 .ToDictionary(
                     x => x.Value.ColumnName,
-                    x => GetTypeCastForDynamicParameter(
-                        FormatDynamicParameter(x.Key),
-                        x.Value.NonStandardDbType));
+                    x => x.Value.OnInsert?.Invoke(queryParams)
+                        ?? GetTypeCastForDynamicParameter(
+                            FormatDynamicParameter(x.Key),
+                            x.Value.NonStandardDbType));
         }
 
-        protected virtual string GetInsertStatement(PropertyColumnMap mapping)
+        protected virtual string GetInsertStatement(PropertyColumnMap mapping, QueryParameters queryParams)
         {
             return FormatSqlStatement(
                 $@"
                     INSERT INTO { Schema.TableName }
-                    { GetColumnValueList(GetColumnParameterMap(mapping), insert: true) }
+                    { GetColumnValueList(GetColumnParameterMap(mapping, queryParams), insert: true) }
                 ");
         }
 
-        protected virtual string GetUpdateStatement(PropertyColumnMap mapping)
+        protected virtual string GetUpdateStatement(PropertyColumnMap mapping, QueryParameters queryParameters)
         {
-            var columnsParameterMap = GetColumnParameterMap(mapping);
-            var updateColumnsParameterMap = GetColumnParameterMap(ExcludeColumnsForUpdate(mapping));
+            var columnsParameterMap = GetColumnParameterMap(mapping, queryParameters);
+            var updateColumnsParameterMap = GetColumnParameterMap(ExcludeColumnsForUpdate(mapping), queryParameters);
 
             var keyColumn = Schema.Columns.Mapping[Schema.Columns.KeyProperty].ColumnName;
 
@@ -159,13 +160,13 @@ namespace Necessity.UnitOfWork.Postgres
                 ");
         }
 
-        protected virtual string GetUpsertStatement(PropertyColumnMap mapping, OnConflict onConflict)
+        protected virtual string GetUpsertStatement(PropertyColumnMap mapping, OnConflict onConflict, QueryParameters queryParameters)
         {
-            var insertColumnExpressions = GetInsertStatement(mapping);
+            var insertColumnExpressions = GetInsertStatement(mapping, queryParameters);
 
             var updateColumnsMapping = ExcludeColumnsForUpdate(mapping);
             var updateColumnExpressions = GetColumnValueList(
-                GetColumnParameterMap(updateColumnsMapping)
+                GetColumnParameterMap(updateColumnsMapping, queryParameters)
                     .ToDictionary(x => x.Key, x => $"EXCLUDED.{x.Key}"), insert: false);
 
             var keyColumn = Schema.Columns.Mapping[Schema.Columns.KeyProperty].ColumnName;
@@ -197,12 +198,12 @@ namespace Necessity.UnitOfWork.Postgres
             return FormatSqlStatement(sql);
         }
 
-        protected virtual string GetSelectClause(PropertyColumnMap mapping)
+        protected virtual string GetSelectClause(PropertyColumnMap mapping, QueryParameters queryParams)
         {
             return
                 $@"
                     SELECT
-                    { GetColumnList(mapping.Values.Select(v => v.CustomSqlExpression ?? v.QualifiedColumnName(Schema))) }
+                    { GetColumnList(mapping.Values.Select(v => v.OnSelect?.Invoke(queryParams) ?? v.QualifiedColumnNameForSelect(Schema))) }
                     FROM { Schema.TableName } { Schema.TableAlias }
                     { string.Join(Environment.NewLine, Schema.Joins.Select(j => j.JoinExpression)) }
                 ";
@@ -227,7 +228,7 @@ namespace Necessity.UnitOfWork.Postgres
                 return string.Empty;
             }
 
-            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName].QualifiedColumnName(Schema) } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
+            return $"ORDER BY { mapping[Schema.DefaultOrderBy.propertyName].QualifiedColumnNameForSelect(Schema) } { (Schema.DefaultOrderBy.direction == OrderDirection.Ascending ? "ASC" : "DESC") }";
         }
 
         protected virtual string FormatSqlStatement(string rawStatement)
