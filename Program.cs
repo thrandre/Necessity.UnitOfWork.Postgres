@@ -10,20 +10,20 @@ namespace Necessity.UnitOfWork.Postgres
     {
         public static void Main(string[] args)
         {
-            var schema = Convention.CreateSchema<Foo>(s => s.PluralizeTableNames = true, schema =>
+            var schema = Convention.CreateSchema<Foo>(s => s.PluralizeTableNames = true, s =>
             {
-                schema.Columns.Mapping.Add(
+                s.Columns.Mapping.Add(
                    "AttributeCount",
                    Mapper
                        .Map("AttributeCount")
                        .ToColumnName("attribute_count")
-                       .OnSelect(_ => $@"(SELECT count(*) FROM jsonb_object_keys({ schema.Columns.Mapping[nameof(Foo.Attributes)].ColumnName })) as attribute_count")
+                       .OnSelect(_ => $@"(SELECT count(*) FROM jsonb_object_keys({ s.Columns.Mapping[nameof(Foo.Attributes)].ColumnName })) as attribute_count")
                        .CreateMapping());
 
-                schema.Columns.Mapping[nameof(Foo.SequenceNumber)]
+                s.Columns.Mapping[nameof(Foo.SequenceNumber)]
                     .OnInsert = e => $@"nextval(seq_{((Dictionary<string, object>)e)[nameof(Foo.TemplateKey)]})";
 
-                schema.DefaultOrderBy = (propertyName: "AttributeCount", direction: OrderDirection.Descending);
+                s.DefaultOrderBy = (propertyName: "AttributeCount", direction: OrderDirection.Descending);
             });
 
             var builder = new DefaultQueryBuilder<Foo, Guid>(schema);
