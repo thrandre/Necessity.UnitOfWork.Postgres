@@ -103,7 +103,7 @@ namespace Necessity.UnitOfWork.Postgres
                 ";
             }
 
-            return string.Join(
+            return "SET " + string.Join(
                 ",",
                 columnParameterMap.Select(p => $"{p.Key}={p.Value}"));
         }
