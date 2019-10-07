@@ -103,7 +103,7 @@ namespace Necessity.UnitOfWork.Postgres
                 ";
             }
 
-            return "SET " + string.Join(
+            return string.Join(
                 ",",
                 columnParameterMap.Select(p => $"{p.Key}={p.Value}"));
         }
@@ -179,6 +179,7 @@ namespace Necessity.UnitOfWork.Postgres
                     sql += $@"
                     { onConflictExpression }
                     DO UPDATE
+                    SET
                     { updateColumnExpressions }
                 ";
                     break;
