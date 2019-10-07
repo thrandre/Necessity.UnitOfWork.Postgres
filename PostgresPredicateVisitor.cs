@@ -22,6 +22,16 @@ namespace Necessity.UnitOfWork.Postgres
                 {Operator.In, Tuple.Create("IN", "NOT IN")}
             };
 
+        private Dictionary<Type, string> _casts = new Dictionary<Type, string>
+        {
+            { typeof(string), "text" },
+            { typeof(int), "number" },
+            { typeof(long), "number" },
+            { typeof(float), "decimal" },
+            { typeof(double), "decimal" },
+            { typeof(bool), "boolean" }
+        };
+
         private const string JsonAccessOperator = "#>>";
         private const string JsonContainsOperator = "@>";
         private const string CastOperator = "::";
@@ -156,34 +166,41 @@ namespace Necessity.UnitOfWork.Postgres
             return GetDynamicParameterName(propertyName, true);
         }
 
-        private string CastToMatchValue(string columnOrPropertyName, object value, string[] validCasts = null)
+        private string CastToMatchValue(string columnOrPropertyName, object value, bool castSimpleTypes)
         {
-            string cast(object v)
+            string cast(Type type, bool castSimple)
             {
-                switch (value)
+                if (_casts.ContainsKey(type))
                 {
-                    case int _:
-                    case long _:
-                        return "integer";
-
-                    case float _:
-                    case double _:
-                        return "decimal";
-
-                    case bool b:
-                        return "boolean";
-
-                    case object o when TypeHelpers.IsJsonNetType(o.GetType()):
-                        return "jsonb";
-
-                    default:
+                    if (!castSimple)
+                    {
                         return null;
+                    }
+
+                    return _casts[type];
                 }
-            };
 
-            var castTo = cast(value);
+                if (TypeHelpers.IsJsonNetType(type))
+                {
+                    return "jsonb";
+                }
 
-            return castTo != null && (validCasts?.Contains(castTo) ?? true)
+                if (TypeHelpers.IsArrayType(type))
+                {
+                    return cast(type.GetElementType(), true) + "[]";
+                }
+
+                return null;
+            }
+
+            if (value == null)
+            {
+                return columnOrPropertyName;
+            }
+
+            var castTo = cast(value?.GetType(), castSimpleTypes);
+
+            return castTo != null
                 ? columnOrPropertyName + CastOperator + castTo
                 : columnOrPropertyName;
         }
@@ -193,7 +210,7 @@ namespace Necessity.UnitOfWork.Postgres
             return CastToMatchValue(
                 dynamicParameter,
                 value,
-                new[] { "jsonb" });
+                false);
         }
 
         private string GetJsonAccessOperator(string columnName, IEnumerable<string> path, object right)
@@ -203,7 +220,8 @@ namespace Necessity.UnitOfWork.Postgres
                     + JsonAccessOperator
                     + Pad(string.Join(",", path),
                 "'{", "}'"),
-                right);
+                right,
+                true);
         }
 
         private string GetRightOperand(string dynamicParameter, object value)
@@ -238,6 +256,11 @@ namespace Necessity.UnitOfWork.Postgres
             var @operator = DefaultOperatorMap[op];
 
             if (value != null && TypeHelpers.IsJsonNetType(value.GetType()) && op == Operator.Matches)
+            {
+                return JsonContainsOperator;
+            }
+
+            if (value != null && TypeHelpers.IsArrayType(value.GetType()) && op == Operator.Matches)
             {
                 return JsonContainsOperator;
             }

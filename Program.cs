@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Necessity.UnitOfWork.Postgres.Schema;
+using Necessity.UnitOfWork.Predicates;
 using Necessity.UnitOfWork.Schema;
 
 namespace Necessity.UnitOfWork.Postgres
@@ -37,6 +39,11 @@ namespace Necessity.UnitOfWork.Postgres
                 }, OnConflict.Update, qp));
 
             Debug.WriteLine(builder.Get(Guid.NewGuid(), qp));
+
+            var qp2 = new Dictionary<string, object>();
+            Debug.WriteLine(builder.Find(Predicate.Create(x => x.Binary(Operator.Matches, "Cats", new[] { "cat1" })), qp2));
+
+            qp2.ToList().ForEach(kvp => Debug.WriteLine($"{kvp.Key}={kvp.Value}"));
         }
     }
 
@@ -44,6 +51,7 @@ namespace Necessity.UnitOfWork.Postgres
     {
         public Guid Id { get; set; }
         public string TemplateKey { get; set; }
+        public string[] Cats { get; set; }
 
         public DateTime Created { get; set; }
         public object Attributes { get; set; }
