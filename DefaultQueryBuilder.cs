@@ -94,11 +94,18 @@ namespace Necessity.UnitOfWork.Postgres
             Dictionary<string, string> columnParameterMap,
             bool insert = true)
         {
-            return $@"
-                ({ string.Join(",", columnParameterMap.Keys) }) 
-                {(insert ? "VALUES" : "=")}
-                ({ string.Join(",", columnParameterMap.Values) })
-            ";
+            if (insert)
+            {
+                return $@"
+                    ({ string.Join(",", columnParameterMap.Keys) }) 
+                    VALUES
+                    ({ string.Join(",", columnParameterMap.Values) })
+                ";
+            }
+
+            return string.Join(
+                ",",
+                columnParameterMap.Select(p => $"{p.Key}={p.Value}"));
         }
 
         protected virtual PropertyColumnMap ExcludeColumnsForUpdate(PropertyColumnMap mapping)
